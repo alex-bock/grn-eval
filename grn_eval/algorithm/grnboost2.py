@@ -1,4 +1,6 @@
 
+from distributed import LocalCluster, Client
+
 from arboreto.algo import grnboost2
 import pandas as pd
 
@@ -16,4 +18,7 @@ class GRNBoost2(Algorithm):
 
     def run(self, dataset: scRNASeq) -> pd.DataFrame:
 
-        return grnboost2(dataset.df)
+        cluster = LocalCluster()
+        client = cluster.get_client()
+
+        return grnboost2(dataset.df, verbose=True, client_or_address=client)
