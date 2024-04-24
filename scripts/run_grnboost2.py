@@ -24,3 +24,4 @@ if __name__ == "__main__":
     network = Network.from_df(result)
 
     print(network.df)
+    network.df.to_csv("./result.csv")
