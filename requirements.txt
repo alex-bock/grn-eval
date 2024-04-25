@@ -1,3 +1,8 @@
 arboreto~=0.1.6
 h5py~=3.10.0
 scanpy~=1.10.0
+
+# testing
+coverage~=7.3.2
+flake8~=6.1.0
+pytest~=7.4.2
