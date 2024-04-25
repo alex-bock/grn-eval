@@ -16,8 +16,8 @@ if __name__ == "__main__":
         dataset = scRNASeq.from_csv(
             data_fp, transpose=True, pd_kwargs={"index_col": 0}
         )
-    elif data_fp.endswith(".h5"):
-        dataset = scRNASeq.from_h5(data_fp)
+    elif data_fp.endswith(".h5ad"):
+        dataset = scRNASeq.from_h5ad(data_fp)
 
     algorithm = GRNBoost2()
     result = algorithm.run(dataset)

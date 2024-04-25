@@ -32,7 +32,6 @@ class scRNASeq(Dataset):
         dataset = cls()
         dataset.adata = sc.read_csv(csv_path, delimiter=delimiter)
         dataset.adata.var_names_make_unique()
-        dataset.adata = dataset._filter_adata(dataset.adata)
         dataset.df = dataset.adata.to_df()
 
         if transpose:
@@ -41,16 +40,15 @@ class scRNASeq(Dataset):
         return dataset
 
     @classmethod
-    def from_h5(cls, h5_path: str) -> scRNASeq:
+    def from_h5ad(cls, h5_path: str) -> scRNASeq:
 
         dataset = cls()
-        dataset.adata = sc.read_10x_h5(h5_path)
+        dataset.adata = sc.read_h5ad(h5_path)
         dataset.adata.var_names_make_unique()
-        dataset.adata = dataset._filter_adata(dataset.adata)
         dataset.df = dataset.adata.to_df()
 
         return dataset
-    
+
     def _filter_adata(self, adata: AnnData) -> AnnData:
 
         # adata.var["mt"] = adata.var_names.str.startswith("MT-")
