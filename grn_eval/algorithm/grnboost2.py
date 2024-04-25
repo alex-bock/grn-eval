@@ -1,5 +1,5 @@
 
-from distributed import LocalCluster, Client
+from distributed import LocalCluster
 
 from arboreto.algo import grnboost2
 import pandas as pd
