@@ -2,8 +2,6 @@
 from __future__ import annotations
 from typing import Any, Dict
 
-from anndata import AnnData
-import pandas as pd
 import scanpy as sc
 
 from .dataset import Dataset
@@ -48,20 +46,3 @@ class scRNASeq(Dataset):
         dataset.df = dataset.adata.to_df()
 
         return dataset
-
-    def _filter_adata(self, adata: AnnData) -> AnnData:
-
-        # adata.var["mt"] = adata.var_names.str.startswith("MT-")
-        # sc.pp.calculate_qc_metrics(
-        #     adata, qc_vars=["mt"], percent_top=None, log1p=False, inplace=True
-        # )
-
-        # n_counts_filter = 2500
-        # mito_filter = 5
-
-        # adata = adata[adata.obs.n_genes_by_counts < n_counts_filter, :]
-        # adata = adata[adata.obs.pct_counts_mt < mito_filter, :].copy()
-
-        sc.pp.filter_genes(adata, min_cells=3)
-
-        return adata
