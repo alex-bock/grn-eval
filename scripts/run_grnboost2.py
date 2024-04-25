@@ -5,12 +5,12 @@ sys.path.append(os.getcwd())
 
 from grn_eval.dataset import scRNASeq
 from grn_eval.algorithm import GRNBoost2
-from grn_eval.network import Network
 
 
 if __name__ == "__main__":
 
     data_fp = sys.argv[1]
+    outpath = sys.argv[2]
 
     if data_fp.endswith(".csv"):
         dataset = scRNASeq.from_csv(
@@ -21,7 +21,4 @@ if __name__ == "__main__":
 
     algorithm = GRNBoost2()
     result = algorithm.run(dataset)
-    network = Network.from_df(result)
-
-    print(network.df)
-    network.df.to_csv("./result.csv")
+    result.to_csv(outpath)
