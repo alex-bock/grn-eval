@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import json
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -21,52 +22,87 @@ class Network:
         return
 
     @classmethod
-    def from_df(
-        cls, df: pd.DataFrame, u_col: str, v_col: str, edge_weight_col: str,
-        edge_weight_threshold: float = None
+    def from_edgelist(
+        cls, fp: str, u_col: str, v_col: str, edge_weight_col: str,
+        edge_weight_threshold: float = None, sep: str = ",",
+        index_col: int = None
     ) -> Network:
 
-        network = cls()
+        df = pd.read_csv(fp, sep=sep, index_col=index_col)
         if edge_weight_threshold is not None:
             df = df[df[edge_weight_col] > edge_weight_threshold]
-        df.rename(
-            {u_col: "u", v_col: "v", edge_weight_col: "weight"}, axis=1,
-            inplace=True
-        )
 
-        network.edge_df = df
-        graph = nx.from_pandas_edgelist(
-            df, source="u", target="v", edge_attr="weight"
+        if edge_weight_col is not None:
+            df.rename(columns={edge_weight_col: "weight"}, inplace=True)
+            edge_weight_col = "weight"
+        else:
+            df["weight"] = 1.0
+
+        network = cls()
+        network.graph = nx.from_pandas_edgelist(
+            df, source=u_col, target=v_col, edge_attr="weight",
+            create_using=nx.DiGraph()
         )
-        network.graph = nx.convert_node_labels_to_integers(
-            graph, label_attribute="symbol"
+        network.node_df = pd.DataFrame(index=network.graph.nodes)
+        network.node_df["i"] = range(len(network.node_df))
+
+        return network
+
+    @classmethod
+    def from_matrix(cls, fp: str) -> Network:
+
+        df = pd.read_csv(fp, index_col=0)
+
+        network = cls()
+        network.graph = nx.from_numpy_matrix(
+            df.values, create_using=nx.DiGraph()
         )
         network.node_df = pd.DataFrame.from_dict(
-            dict(network.graph.nodes(data=True)), orient="index"
+            {name: i for i, name in enumerate(df.columns)}, orient="index",
+            columns=["symbol"]
         )
 
         return network
 
-    def to_edgelist(self, fp: str, data: bool = False):
+    def to_edgelist(self, fp: str, data: bool = False, as_i: bool = False):
 
-        nx.write_edgelist(self.graph, fp, data=data)
+        if as_i:
+            graph = nx.relabel_nodes(self.graph, self.node_df.i, copy=True)
+        else:
+            graph = self.graph
+
+        nx.write_edgelist(graph, fp, data=data)
 
         return
 
-    def degree_distribution(self):
+    def degree_distribution(self, fig_path: str = None):
 
-        degrees = nx.degree(self.graph)
-        degrees = [degrees[i] for i in range(len(degrees))]
-        fig = px.histogram(x=degrees)
-        fig.show()
+        degrees = dict(nx.degree(self.graph))
+        self.node_df["degree"] = degrees
+        fig = px.histogram(x=self.node_df.degree.values)
+
+        if fig_path is not None:
+            fig.write_image(fig_path)
+        else:
+            fig.show()
+
+        return
+
+    def run_hits(self):
+
+        hubs, hits = nx.hits(self.graph)
+        self.node_df["hub"] = hubs
+        self.node_df["hit"] = hits
 
         return
 
     def load_geneset_assignments(self, fp: str):
 
         geneset_df = pd.read_csv(fp)
-        self.node_df["genesets"] = self.node_df.symbol.apply(
-            lambda x: geneset_df[geneset_df.gene_symbol == x].gs_name.unique().tolist()
+        self.node_df["genesets"] = self.node_df.index.map(
+            lambda x: geneset_df[
+                geneset_df.gene_symbol == x
+            ].gs_name.unique().tolist()
         )
 
         genesets = set()
@@ -82,14 +118,14 @@ class Network:
 
         geneset_weights = defaultdict(float)
         for geneset in self.geneset_df.index:
-            geneset_nodes = self.node_df[self.node_df.genesets.apply(lambda x: geneset in x)].index.values
+            geneset_nodes = self.node_df[
+                self.node_df.genesets.apply(lambda x: geneset in x)
+            ].index.values
             if len(geneset_nodes) == 0:
                 continue
             subgraph = self.graph.subgraph(geneset_nodes)
             subgraph_edges = nx.get_edge_attributes(subgraph, "weight").items()
             geneset_weights[geneset] = sum([item[1] for item in subgraph_edges])
-            if geneset == "WP_G_PROTEIN_SIGNALING_PATHWAYS":
-                import pdb; pdb.set_trace()
             if len(subgraph_edges) > 0:
                  geneset_weights[geneset] /= len(subgraph_edges)
 
@@ -97,44 +133,44 @@ class Network:
 
         return
 
-    def load_node2vec_embeddings(self):
+    def generate_node2vec_embeddings(self, emb_fp: str):
 
-        self.embeddings["node2vec"] = np.zeros((len(self.graph), 128))
+        model = Node2Vec(self.graph)
+        result = model.fit()
 
-        node2vec = Node2Vec(self.graph)
-        embeddings = node2vec.fit()
-
-        for i in self.graph.nodes:
-            self.embeddings["node2vec"][i] = embeddings.wv[i]
+        with open(emb_fp, "w") as f:
+            for node in self.node_df.index.values:
+                f.write(
+                    " ".join(
+                        [node] + list([str(x) for x in result.wv[node]])
+                    ) + "\n"
+                )
 
         return
 
-    def load_embeddings(self, fp: str, type: str):
+    def load_embeddings(
+        self, type: str, emb_fp: str, i_indexed: bool = False,
+        header: bool = False
+    ):
 
-        with open(fp, "r") as f:
+        with open(emb_fp, "r") as f:
             lines = f.readlines()
 
-        n_nodes, n_dim = int(lines[0].strip().split()[0]), int(lines[0].strip().split()[1])
-        assert(n_nodes == len(self.graph.nodes))
-        self.embeddings[type] = np.zeros((n_nodes, n_dim))
+        if header:
+            lines = lines[1:]
 
-        for line in lines[1:]:
-            vals = line.strip().split()
-            self.embeddings[type][int(vals[0])] = [float(val) for val in vals[1:]]
+        dim = len(lines[0].split()) - 1
+        self.embeddings[type] = np.zeros((len(self.node_df), dim))
+
+        for line in lines:
+            vals = line.split()
+            i = vals[0]
+            embedding = vals[1:]
+            if not i_indexed:
+                i = self.node_df.loc[i].i
+            self.embeddings[type][i] = embedding
 
         return
-
-    def plot_embeddings(self, type: str, geneset: str = None):
-
-        pca = PCA(n_components=2)
-        reduced = pca.fit_transform(self.embeddings[type])
-
-        if geneset is None:
-            fig = px.scatter(x=reduced[:, 0], y=reduced[:, 1])
-            fig.show()
-        else:
-            fig = px.scatter(x=reduced[:, 0], y=reduced[:, 1], color=self.node_df.genesets.apply(lambda x: geneset in x))
-            fig.show()
 
     def draw(self, geneset: str = None):
 
@@ -142,10 +178,15 @@ class Network:
             graph = self.graph
         else:
             graph = self.graph.subgraph(
-                self.node_df[self.node_df.genesets.apply(lambda x: geneset in x)].index.values
+                self.node_df[
+                    self.node_df.genesets.apply(lambda x: geneset in x)
+                ].index.values
             )
 
         edges, weights = zip(*nx.get_edge_attributes(graph, "weight").items())
 
-        nx.draw(graph, pos=nx.drawing.layout.circular_layout(graph), edgelist=edges, edge_color=weights, edge_cmap=plt.cm.Blues)
+        nx.draw(
+            graph, pos=nx.drawing.layout.circular_layout(graph), edgelist=edges,
+            edge_color=weights, edge_cmap=plt.cm.Blues
+        )
         plt.show()
