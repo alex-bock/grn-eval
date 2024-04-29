@@ -75,9 +75,11 @@ class Network:
 
         return
 
-    def degree_distribution(self, fig_path: str = None):
+    def degree_distribution(self, fig_path: str = None, weighted: bool = False):
 
-        degrees = dict(nx.degree(self.graph))
+        degrees = dict(
+            nx.degree(self.graph, weight="weight" if weighted else None)
+        )
         self.node_df["degree"] = degrees
         fig = px.histogram(x=self.node_df.degree.values)
 
@@ -133,9 +135,9 @@ class Network:
 
         return
 
-    def generate_node2vec_embeddings(self, emb_fp: str):
+    def generate_node2vec_embeddings(self, emb_fp: str, weighted: bool = False):
 
-        model = Node2Vec(self.graph)
+        model = Node2Vec(self.graph, weight_key="weight" if weighted else None)
         result = model.fit()
 
         with open(emb_fp, "w") as f:
